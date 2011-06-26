@@ -1,0 +1,35 @@
+%title MusicDir
+
+= Helpful Links =
+pylast:: http://code.google.com/p/pylast/
+    * for last.fm support
+last.fm:: http://www.last.fm/api/intro
+    * last.fm api docs
+beets:: http://code.google.com/p/beets/wi
+    * project which heavily influences MusicDir
+python-musicbrainz2:: http://musicbrainz.org/doc/python-musicbrainz2
+    * python interface to musicbrainz
+
+= ToDo =
+Basically:
+* allow for setting path format
+1) display current tags
+2) ask if changes are needed
+    a) if yes open temp txt file for changes
+    b) allow for shell
+    c) allow for search on last.fm
+3) write changes to file (metadata)
+4) check for new file name / path existence
+    a) warn if overwriting file
+5) copy file to new name / path destination
+6) add file + info to database
+7)  
+
+= Command Line Interface =
+see musicdir --help
+
+= Database Scheme =
+[file://schema.sql Database Schema]
+= Database Addition Steps =
+
+
