@@ -13,6 +13,13 @@
 # included in all copies or substantial portions of the Software.
 
 from musicdir import ui
+from musicdir.ui import print_
+from musicdir.util import *
+from musicdir.library import *
+from musicdir.mediafile import UnreadableFileError
+
+import logging
+import codecs
 
 # The list of default subcommands. This is populated with Subcommand
 # objects that can be fed to a SubcommandsOptionParser.
@@ -24,18 +31,22 @@ def list_items(lib, query, release, path):
     albums instead of single items. If path, print the matched objects'
     paths instead of human-readable information about them.
     """
+    query = query.decode('utf8', 'replace')
     if release:
         for rls in lib.releases(query):
             if path:
                 print_(rls.dirpath)
             else:
-                print_(lib.artist(rls.artist).name + u' - ' + rls.name)
+                aname = rls.artist.name if rls.artist != None else 'Unknown Artist'
+                print_(aname + u' - ' + rls.name)
     else:
         for track in lib.tracks(query):
-            if path:
-                print_(track.path)
+            if path and track.file != None:
+                print_(track.file.path)
             else:
-                print_(lib.artist(track.artist).name + u' - ' + lib.release(track.release).name + u' - ' + track.title)
+                aname = track.artist.name if track.artist != None else 'Unknown Artist'
+                rname = track.release.name if track.release != None else 'Unknown Release'
+                print_(aname + u' - ' + rname + u' - ' + track.title)
 
 list_cmd = ui.Subcommand('list', help='query the library', aliases=('ls',))
 list_cmd.parser.add_option('-r', '--release', action='store_true',
@@ -51,38 +62,86 @@ default_commands.append(list_cmd)
 # {{{ import: simple import into library
 import_cmd = ui.Subcommand('import', help='import new music',
     aliases=('imp', 'im'))
-import_cmd.parser.add_option('-c', '--copy', action='store_true',
-    default=None, help="copy tracks into library directory (default)")
-import_cmd.parser.add_option('-C', '--nocopy', action='store_false',
-    dest='copy', help="don't copy tracks (opposite of -c)")
-import_cmd.parser.add_option('-w', '--write', action='store_true',
-    default=None, help="write new metadata to files' tags (default)")
-import_cmd.parser.add_option('-W', '--nowrite', action='store_false',
-    dest='write', help="don't write metadata (opposite of -w)")
-import_cmd.parser.add_option('-a', '--autotag', action='store_true',
-    dest='autotag', help="infer tags for imported files (default)")
-import_cmd.parser.add_option('-A', '--noautotag', action='store_false',
-    dest='autotag',
-    help="don't infer tags for imported files (opposite of -a)")
-import_cmd.parser.add_option('-p', '--resume', action='store_true',
-    default=None, help="resume importing if interrupted")
-import_cmd.parser.add_option('-P', '--noresume', action='store_false',
-    dest='resume', help="do not try to resume importing")
-import_cmd.parser.add_option('-r', '--art', action='store_true',
-    default=None, help="try to download album art")
-import_cmd.parser.add_option('-R', '--noart', action='store_false',
-    dest='art', help="don't album art (opposite of -r)")
-import_cmd.parser.add_option('-q', '--quiet', action='store_true',
-    dest='quiet', help="never prompt for input: skip albums instead")
+import_cmd.parser.add_option('-v', '--verbose', action='store_true',
+    help='turn up the verbosity level!!!')
 import_cmd.parser.add_option('-l', '--log', dest='logpath',
     help='file to log untaggable albums for later review')
-import_cmd.parser.add_option('-s', '--singletons', action='store_true',
-    help='import individual tracks instead of full albums')
-import_cmd.parser.add_option('-t', '--timid', dest='timid',
-    action='store_true', help='always confirm all actions')
+import_cmd.parser.add_option('-a', '--attachments', action='store_true',
+    help='attach files in same directory as audio files')
+#import_cmd.parser.add_option('', '', action='store_false',
+#    help='')
 
 def import_func(lib, config, opts, args):
-    pass
+    logger = logging.getLogger('importer')
+    if opts.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.WARNING)
+
+    logfile = None
+    if opts.logpath:
+        logfile = codecs.open(opts.logpath, 'w', 'utf-8')
+
+    for topdir in args:
+        topdir = bytestring_path(topdir)
+        for root, dirs, files in sorted_walk(topdir):
+            lib.session.commit()
+            # logger.info(root)
+            print_(root)
+
+            mre = re.compile(r'\.(m4a|mp4|mp3|flac|ogg|ape|wv|mpc)$', re.I)
+            are = re.compile(r'\.(nfo|cue|log)$', re.I)
+            cover_re = re.compile(r'(folder|cover|cd|front)\.(jpg|jpeg|png|bmp)$', re.I)
+
+            mfiles = [ ] # audio files
+            afiles = [ ] # attachments
+            cover = None
+
+            for file in files:
+                file = os.path.join(root, file)
+
+                # skip duplicates for now
+                if lib.session.query(File.path).filter(File.path == file).count() > 0:
+                    continue
+
+                if mre.search(file):
+                    if opts.verbose:
+                        print_(file)
+                    mfiles.append(file)
+                elif opts.attachments == True and cover == None and cover_re.search(file):
+                    if opts.verbose:
+                        print_(file)
+                    cover = File(path=file)
+                elif opts.attachments == True and are.search(file):
+                    if opts.verbose:
+                        print_(file)
+                    afiles.append(file)
+
+            if len(mfiles) > 0:
+                attachments = [ ]
+                for file in afiles:
+                    attachments.append(Attachment(file=File(path=file), name=file.decode('utf8','replace')) )
+
+                if cover != None:
+                    attachments.append(Attachment(file=cover, name='cover'))
+
+                for file in  mfiles:
+                    try:
+                        track = Track()
+                        track.read(file)
+                        if opts.attachments == True:
+                            track.attachments = attachments
+                            if track.release != None:
+                                track.release.cover = cover
+                        lib.session.add(track)
+                    except UnreadableFileError:
+                        logger.error(u'FAILED: ' + file.decode('utf8', 'replace'))
+                        if logfile != None:
+                            logfile.write(file.decode('utf8', 'replace') + u'\n')
+    if logfile != None:
+        logfile.close()
+    lib.session.commit()
+
 import_cmd.func = import_func
 default_commands.append(import_cmd)
 # }}}

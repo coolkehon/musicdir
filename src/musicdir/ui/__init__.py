@@ -17,6 +17,7 @@ import optparse
 import textwrap
 import ConfigParser
 import sys
+import locale
 from difflib import SequenceMatcher
 import logging
 from musicdir import util, library
@@ -30,8 +31,8 @@ class UserError(Exception):
 # {{{ Constants.
 CONFIG_PATH_VAR = 'MUSICDIR_CONFIG'
 DEFAULT_CONFIG_FILE = os.path.expanduser('~/.musicdirrc')
-DEFAULT_LIBRARY = '~/.musicdir.mb'
-DEFAULT_DIRECTORY = '~/Music'
+DEFAULT_LIBRARY = 'sqlite:///' + os.path.expanduser('~/.musicdir.db')
+DEFAULT_DIRECTORY = os.path.expanduser('~/Music')
 DEFAULT_PATH_FORMATS = {
     'default': '$albumartist/$album/$track $title',
     'comp': 'Compilations/$album/$track $title',
