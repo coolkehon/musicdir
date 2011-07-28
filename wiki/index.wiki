@@ -29,7 +29,8 @@ Basically:
 see musicdir --help
 
 = Database Scheme =
-[file://schema.sql Database Schema]
+
 = Database Addition Steps =
 
+= Import Steps =
 

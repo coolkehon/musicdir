@@ -69,10 +69,23 @@ class Attachment(Base):
         self.description = description
 # }}} end Attachment(Base)
 
+# {{{ Tag(Base)
+class Tag(Base):
+    __tablename__ = 'tags'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(UnicodeText)
+    description = Column(UnicodeText)
+    
+    def __init__(self, name=None, description=None):
+        self.name = name
+        self.description = description
+# }}} end Tag(Base)
+
 # {{{ Associative Tables
 track_attachments = Table('track_attachments', Base.metadata,
         Column('id', Integer, primary_key=True),
-        Column('track_id', Integer, ForeignKey('tracks.id')) ,
+        Column('track_id', Integer, ForeignKey('tracks.id')),
         Column('attachment_id', Integer, ForeignKey(Attachment.id)) )
 
 release_attachments = Table('release_attachments', Base.metadata,
@@ -85,6 +98,38 @@ artist_attachments = Table('artist_attachments', Base.metadata,
         Column('artist_id', Integer, ForeignKey('artists.id')),
         Column('attachment_id', Integer, ForeignKey(Attachment.id)) )
 
+class TrackTag(Base):
+    __tablename__ = 'track_tags'
+
+    id = Column(Integer, primary_key=True)
+    track_id = Column(Integer, ForeignKey('tracks.id'))
+    tag_id = Column(Integer, ForeignKey(Tag.id))
+    weight = Column(Integer)
+    origin = Column(UnicodeText)
+
+    tag = relationship(Tag)
+
+class ReleaseTag(Base):
+    __tablename__ = 'release_tags'
+
+    id = Column(Integer, primary_key=True)
+    release_id = Column(Integer, ForeignKey('releases.id'))
+    tag_id = Column(Integer, ForeignKey(Tag.id))
+    weight = Column(Integer)
+    origin = Column(UnicodeText)
+
+    tag = relationship(Tag)
+
+class ArtistTag(Base):
+    __tablename__ = 'artist_tags'
+
+    id = Column(Integer, primary_key=True)
+    artist_id = Column(Integer, ForeignKey('artists.id'))
+    tag_id = Column(Integer, ForeignKey(Tag.id))
+    weight = Column(Integer)
+    origin = Column(UnicodeText)
+
+    tag = relationship(Tag)
 # }}} end Associative Tables
 
 # {{{ Artist(Base)
@@ -98,6 +143,7 @@ class Artist(Base):
 
     art = relationship(File, primaryjoin=artfile_id == File.id, uselist=False)
     attachments = relationship(Attachment, secondary=artist_attachments)
+    tags = relationship(ArtistTag)
 
     def __init__(self, name=None, description=None, artpath=None):
         self.name = name
@@ -123,6 +169,7 @@ class Release(Base):
     cover = relationship(File, primaryjoin=coverfile_id == File.id, uselist=False)
     artist = relationship(Artist, primaryjoin=artist_id == Artist.id, backref='releases')
     attachments = relationship(Attachment, secondary=release_attachments)
+    tags = relationship(ReleaseTag)
 
     def __init__(self, name=None, type=None, artpath=None, artist=None, date=None, tracktotal=None, disctotal=None, compilation=None, dirpath=None):
         self.name = name
@@ -161,6 +208,7 @@ class Track(Base):
     release = relationship(Release, primaryjoin=release_id == Release.id, backref='tracks')
     file = relationship(File, primaryjoin=file_id == File.id)
     attachments = relationship(Attachment, secondary=track_attachments)
+    tags = relationship(TrackTag)
 
     def __init__(self, artist=None, release=None, file=None, title=None, track=None, discnum=None, genre=None, date=None, composer=None, lyrics=None, comments=None, bitrate=None, format=None, length=None, bpm=None):
         self.artist = artist
@@ -316,25 +364,22 @@ class BaseLibrary(object):
 # {{{ Library(BaseLibrary)
 class Library(BaseLibrary):
     """A Music Library using an SQLite database as the metadata store."""
-    # {{{ __init__(self, path, directory, path_format, art_filename)
+    # {{{ __init__(self, dburi, path, directory, path_format)
     def __init__(self, dburi='sqlite:///musicdir.db',
                        directory='~/Music',
-                       path_formats=None,
-                       art_filename='cover'):
+                       path_formats=None):
         self.directory = bytestring_path(directory)
         if path_formats is None:
             path_formats = {'default': '$artist/$album/$track $title'}
         elif isinstance(path_formats, basestring):
             path_formats = {'default': path_formats}
         self.path_formats = path_formats
-        self.art_filename = bytestring_path(art_filename)
 
         # setup database connections
         self.db = create_engine(dburi)
         self.db.echo = False
         Session.configure(bind=self.db)
         self.session = Session()
- 
 
         # make sure that the database tables are created
         metadata.create_all(self.db)
@@ -350,7 +395,7 @@ class Library(BaseLibrary):
         if m != None:
             if re.match(r'^(album|release)$', m.group(1), re.I):
                 return Release.name.like('%' + m.group(2) + '%')
-            elif re.match(r'^artist$', m.group(1), re.I):
+            elif re.match(r'^(artist|author)$', m.group(1), re.I):
                 return Artist.name.like('%' + m.group(2) + '%')
             elif re.match(r'^(title|track)$', m.group(1), re.I):
                 return Track.title.like('%' + m.group(2) + '%')
@@ -362,15 +407,20 @@ class Library(BaseLibrary):
         if m != None:
             if re.match(r'^(album|release)$', m.group(1), re.I):
                 return Release.name == m.group(2)
-            elif re.match(r'^artist$', m.group(1), re.I):
+            elif re.match(r'^(artist|author)$', m.group(1), re.I):
                 return Artist.name == m.group(2)
             elif re.match(r'^(title|track)$', m.group(1), re.I):
                 return Track.name == m.group(2)
             elif re.match(r'^path$', m.group(1), re.I):
                 return or_(Release.dirpath == m.group(2), File.path == m.group(2))
-        
+
+        # tag matches
+        m = re.match(r'^\+(.*?)$', field)
+        if m != None:
+            return Tag.name == m.group(1)
+
         # TODO add more regex filters
-        # TODO add +tag filters
+        # TODO OR tags together, this means we need to be passed a list instead
         # TODO add singleton:(1|true) like boolean value filters
         return or_(Artist.name.like('%' + field + '%'), Release.name.like('%' + field + '%'), Track.title.like('%' + field + '%') )
 
@@ -396,11 +446,24 @@ class Library(BaseLibrary):
             for field in fields:
                 filters.append(self.get_filter(field))
 
-            return self.session.query(Artist).filter(filters).all()
-        elif fields != None:
-            return self.session.query(Artist).join(Track).join(File).join(Release).filter(self.get_filter(fields)).all()
+            return self.session.query(Artist).\
+                    outerjoin(Track, Track.artist_id == Artist.id).\
+                    outerjoin(Release, Release.id == Track.release_id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
+                    outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
+                    filter(and_(*filters)).group_by(Artist.id).all()
 
-        return self.session.query(Artist).all()
+        elif fields != None:
+            return self.session.query(Artist).\
+                    outerjoin(Track, Track.artist_id == Artist.id).\
+                    outerjoin(Release, Release.id == Track.release_id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
+                    outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
+                    filter(self.get_filter(fields)).group_by(Artist.id).all()
+        else:
+            return self.session.query(Artist).group_by(Artist.id).all()
 
     def release(self, release_id):
         return self.session.query(Release).filter(Release.id == release_id).first()
@@ -415,12 +478,24 @@ class Library(BaseLibrary):
             for field in fields:
                 filters.append(self.get_filter(field))
 
-            return self.session.query(Release).join(Artist).join(Track).join(File).filter(filters).all()
+            return self.session.query(Release).\
+                    outerjoin(Artist, Artist.id == Release.artist_id).\
+                    outerjoin(Track, Track.release_id == Release.id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
+                    outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
+                    filter(and_(*filters)).group_by(Release.id).all()
 
         elif fields != None:
-            return self.session.query(Release).join(Artist).join(Track).join(File).filter(self.get_filter(fields)).all()
-        
-        return self.session.query(Release).all()
+            return self.session.query(Release).\
+                    outerjoin(Artist, Artist.id == Release.artist_id).\
+                    outerjoin(Track, Track.release_id == Release.id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
+                    outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
+                    filter(self.get_filter(fields)).group_by(Release.id).all()
+        else:
+            return self.session.query(Release).group_by(Release.id).all()
 
     def track(self, track_id):
         return self.session.query(Track).filter(Track.id == track_id).first()
@@ -435,12 +510,25 @@ class Library(BaseLibrary):
             for field in fields:
                 filters.append(self.get_filter(field))
 
-            return self.session.query(Track).join(Artist).join(Release).join(File).filter(filters).all()
+            return self.session.query(Track).\
+                    outerjoin(Artist, Artist.id == Track.artist_id).\
+                    outerjoin(Release, Release.id == Track.release_id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(TrackTag, TrackTag.track_id == Track.id).\
+                    outerjoin(Tag, TrackTag.tag_id == Tag.id).\
+                    filter(and_(*filters)).group_by(Track.id).all()
 
         elif fields != None:
-            return self.session.query(Track).join(Artist).join(Release).join(File).filter(self.get_filter(fields)).all()
+            return self.session.query(Track).\
+                    outerjoin(Artist, Artist.id == Track.artist_id).\
+                    outerjoin(Release, Release.id == Track.release_id).\
+                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(TrackTag, TrackTag.track_id == Track.id).\
+                    outerjoin(Tag, TrackTag.tag_id == Tag.id).\
+                    filter(self.get_filter(fields)).group_by(Track.id).all()
 
-        return self.session.query(Track).all()
+        else:
+            return self.session.query(Track).group_by(Track.id).all()
 
 # }}} end Library(BaseLibrary)
 

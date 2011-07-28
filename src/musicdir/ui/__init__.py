@@ -17,9 +17,9 @@ import optparse
 import textwrap
 import ConfigParser
 import sys
-import locale
 from difflib import SequenceMatcher
 import logging
+import locale
 from musicdir import util, library
 
 # {{{ UI exception. Commands should throw this in order to display
@@ -32,13 +32,12 @@ class UserError(Exception):
 CONFIG_PATH_VAR = 'MUSICDIR_CONFIG'
 DEFAULT_CONFIG_FILE = os.path.expanduser('~/.musicdirrc')
 DEFAULT_LIBRARY = 'sqlite:///' + os.path.expanduser('~/.musicdir.db')
-DEFAULT_DIRECTORY = os.path.expanduser('~/Music')
+DEFAULT_DIRECTORY = '~/Music'
 DEFAULT_PATH_FORMATS = {
     'default': '$albumartist/$album/$track $title',
     'comp': 'Compilations/$album/$track $title',
     'singleton': 'Non-Album/$artist/$title',
 }
-DEFAULT_ART_FILENAME = 'cover'
 # }}} end constants
 
 # {{{ print_: print without error
@@ -402,13 +401,9 @@ def main(args=None):
         if config.has_section('paths'):
             path_formats.update(config.items('paths'))
 
-    art_filename = \
-        config_val(config, 'musicdir', 'art_filename', DEFAULT_ART_FILENAME)
-
     lib = library.Library(os.path.expanduser(libpath),
                           directory,
-                          path_formats,
-                          art_filename)
+                          path_formats )
     # }}} end Open the library file
     
     # {{{ Configure the logger.
