@@ -386,45 +386,110 @@ class Library(BaseLibrary):
 
     # }}} end __init__(self, path, directory, path_format, art_filename)
 
-    # {{{ get_filter(self, field)
-    def get_filter(self, field):
+    # {{{ get_filter(self, fields)
+    def get_filter(self, fields):
         """Transform a field into a filter using python regex
         """
-        # like matches
-        m = re.match(r'^(.*?):(.*?)$', field)
-        if m != None:
-            if re.match(r'^(album|release)$', m.group(1), re.I):
-                return Release.name.like('%' + m.group(2) + '%')
-            elif re.match(r'^(artist|author)$', m.group(1), re.I):
-                return Artist.name.like('%' + m.group(2) + '%')
-            elif re.match(r'^(title|track)$', m.group(1), re.I):
-                return Track.title.like('%' + m.group(2) + '%')
-            elif re.match(r'^path$', m.group(1), re.I):
-                return or_(Release.dirpath.like('%' + m.group(2) + '%'), File.path.like('%' + m.group(2) + '%') )
+        if fields is None:
+            return None
 
-        # exact matches
-        m = re.match(r'^(.*?)=(.*?)$', field)
-        if m != None:
-            if re.match(r'^(album|release)$', m.group(1), re.I):
-                return Release.name == m.group(2)
-            elif re.match(r'^(artist|author)$', m.group(1), re.I):
-                return Artist.name == m.group(2)
-            elif re.match(r'^(title|track)$', m.group(1), re.I):
-                return Track.name == m.group(2)
-            elif re.match(r'^path$', m.group(1), re.I):
-                return or_(Release.dirpath == m.group(2), File.path == m.group(2))
+        if not isinstance(fields, list):
+            fields = [ fields ]
 
-        # tag matches
-        m = re.match(r'^\+(.*?)$', field)
-        if m != None:
-            return Tag.name == m.group(1)
+        if len(fields) < 1:
+            return None
+        
+        # for or'ing and and'ing together later
+        filters = { 'releases' : [ ], 'artists' : [ ], 'tracks' : [ ], 'paths' : [ ],  'tags' : [ ], 'other' : [ ] }
 
-        # TODO add more regex filters
-        # TODO OR tags together, this means we need to be passed a list instead
-        # TODO add singleton:(1|true) like boolean value filters
-        return or_(Artist.name.like('%' + field + '%'), Release.name.like('%' + field + '%'), Track.title.like('%' + field + '%') )
+        for field in fields:
+            # like matches
+            m = re.match(r'^(.*?):(.*?)$', field)
+            if m != None:
+                if re.match(r'^(album|release)$', m.group(1), re.I):
+                    filters['releases'].append( Release.name.like('%' + m.group(2) + '%') )
+                    continue
+                elif re.match(r'^(artist|author)$', m.group(1), re.I):
+                    filters['artists'].append( Artist.name.like('%' + m.group(2) + '%') )
+                    continue
+                elif re.match(r'^(title|track)$', m.group(1), re.I):
+                    filters['tracks'].append( Track.title.like('%' + m.group(2) + '%') )
+                    continue
+                elif re.match(r'^path$', m.group(1), re.I):
+                    filters['paths'].append( Release.dirpath.like('%' + m.group(2) + '%') )
+                    filters['paths'].append( File.path.like('%' + m.group(2) + '%') )
+                    continue
 
-    # }}} end get_clause(self, field)
+            # exact matches
+            m = re.match(r'^(.*?)=(.*?)$', field)
+            if m != None:
+                if re.match(r'^(album|release)$', m.group(1), re.I):
+                    filters['releases'].append( Release.name == m.group(2) )
+                    continue
+                elif re.match(r'^(artist|author)$', m.group(1), re.I):
+                    filters['artists'].append( Artist.name == m.group(2) )
+                    continue
+                elif re.match(r'^(title|track)$', m.group(1), re.I):
+                    filters['tracks'].append( Track.name == m.group(2) )
+                    continue
+                elif re.match(r'^path$', m.group(1), re.I):
+                    filters['paths'].append( Release.dirpath == m.group(2) )
+                    filters['paths'].append( File.path == m.group(2) )
+                    continue
+
+            # tag matches
+            m = re.match(r'^\+(.*?)$', field)
+            if m != None:
+                filters['tags'].append( Tag.name == m.group(1) )
+                continue
+
+            # TODO add more regex filters
+            # TODO OR tags together, this means we need to be passed a list instead
+            # TODO add singleton:(1|true) like boolean value filters
+            filters['other'].append( Artist.name.like('%' + field + '%') )
+            filters['other'].append( Release.name.like('%' + field + '%') )
+            filters['other'].append( Track.title.like('%' + field + '%') )
+            continue
+        
+        # finalize filters
+        final = [ ]
+        if len(filters['releases']) == 1:
+            final.append(filters['releases'][0] )
+        elif len(filters['releases']) > 1:
+            final.append(or_(*filters['releases']) )
+
+        if len(filters['artists']) == 1:
+            final.append(filters['artists'][0] )
+        elif len(filters['artists']) > 1:
+            final.append(or_(*filters['artists']) )
+
+        if len(filters['tracks']) == 1:
+            final.append(filters['tracks'][0] )
+        elif len(filters['tracks']) > 1:
+            final.append(or_(*filters['tracks']) )
+
+        if len(filters['paths']) == 1:
+            final.append(filters['paths'][0] )
+        elif len(filters['paths']) > 1:
+            final.append(or_(*filters['paths']) )
+
+        if len(filters['tags']) == 1:
+            final.append(filters['tags'][0] )
+        elif len(filters['tags']) > 1:
+            final.append(or_(*filters['tags']) )
+
+        if len(filters['other']) == 1:
+            final.append(filters['other'][0] )
+        elif len(filters['other']) > 1:
+            final.append(and_(*filters['other']) )
+        
+        if len(final) == 1:
+            return final[0]
+        elif len(final) > 1:
+            return and_(*final)
+        else:
+            return None
+    # }}} end get_filter(self, fields)
 
     def add(self, item):
         """Add a Item (track, release, artist, etc) to the database"""
@@ -441,27 +506,15 @@ class Library(BaseLibrary):
         """Return a list of Artist objects from the database base on fields
         If no fields then return all artist in database
         """
-        filters = [ ]
-        if isinstance(fields, list) and len(fields) > 0:
-            for field in fields:
-                filters.append(self.get_filter(field))
-
+        filter = self.get_filter(fields)
+        if filter is not None:
             return self.session.query(Artist).\
                     outerjoin(Track, Track.artist_id == Artist.id).\
                     outerjoin(Release, Release.id == Track.release_id).\
                     outerjoin(File, File.id == Track.file_id).\
                     outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
                     outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
-                    filter(and_(*filters)).group_by(Artist.id).all()
-
-        elif fields != None:
-            return self.session.query(Artist).\
-                    outerjoin(Track, Track.artist_id == Artist.id).\
-                    outerjoin(Release, Release.id == Track.release_id).\
-                    outerjoin(File, File.id == Track.file_id).\
-                    outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
-                    outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
-                    filter(self.get_filter(fields)).group_by(Artist.id).all()
+                    filter(filter).group_by(Artist.id).all()
         else:
             return self.session.query(Artist).group_by(Artist.id).all()
 
@@ -473,27 +526,15 @@ class Library(BaseLibrary):
         If no fields then return all releases in database
         """
         # TODO: add support for various artist release search
-        filters = [ ]
-        if isinstance(fields, list) and len(fields) > 0:
-            for field in fields:
-                filters.append(self.get_filter(field))
-
+        filter = self.get_filter(fields)
+        if filter is not None:
             return self.session.query(Release).\
                     outerjoin(Artist, Artist.id == Release.artist_id).\
                     outerjoin(Track, Track.release_id == Release.id).\
                     outerjoin(File, File.id == Track.file_id).\
                     outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
                     outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
-                    filter(and_(*filters)).group_by(Release.id).all()
-
-        elif fields != None:
-            return self.session.query(Release).\
-                    outerjoin(Artist, Artist.id == Release.artist_id).\
-                    outerjoin(Track, Track.release_id == Release.id).\
-                    outerjoin(File, File.id == Track.file_id).\
-                    outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
-                    outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
-                    filter(self.get_filter(fields)).group_by(Release.id).all()
+                    filter(filter).group_by(Release.id).all()
         else:
             return self.session.query(Release).group_by(Release.id).all()
 
@@ -505,28 +546,15 @@ class Library(BaseLibrary):
         If no fields then return all tracks in database
         """
         # TODO: add support for featured artist track search
-        filters = [ ]
-        if isinstance(fields, list) and len(fields) > 0:
-            for field in fields:
-                filters.append(self.get_filter(field))
-
+        filter = self.get_filter(fields)
+        if filter is not None:
             return self.session.query(Track).\
                     outerjoin(Artist, Artist.id == Track.artist_id).\
                     outerjoin(Release, Release.id == Track.release_id).\
                     outerjoin(File, File.id == Track.file_id).\
                     outerjoin(TrackTag, TrackTag.track_id == Track.id).\
                     outerjoin(Tag, TrackTag.tag_id == Tag.id).\
-                    filter(and_(*filters)).group_by(Track.id).all()
-
-        elif fields != None:
-            return self.session.query(Track).\
-                    outerjoin(Artist, Artist.id == Track.artist_id).\
-                    outerjoin(Release, Release.id == Track.release_id).\
-                    outerjoin(File, File.id == Track.file_id).\
-                    outerjoin(TrackTag, TrackTag.track_id == Track.id).\
-                    outerjoin(Tag, TrackTag.tag_id == Tag.id).\
-                    filter(self.get_filter(fields)).group_by(Track.id).all()
-
+                    filter(filter).group_by(Track.id).all()
         else:
             return self.session.query(Track).group_by(Track.id).all()
 

@@ -31,16 +31,21 @@ def list_items(lib, query, release, path):
     albums instead of single items. If path, print the matched objects'
     paths instead of human-readable information about them.
     """
-    query = query.decode('utf8', 'replace')
+    fields = [ ]
+    if isinstance(query, list):
+        fields = [ q.decode('utf8', 'replace') for q in query ]
+    elif query != None:
+        fields = [ query.decode('utf8', 'replace') ]
+    
     if release:
-        for rls in lib.releases(query):
+        for rls in lib.releases(fields):
             if path:
                 print_(rls.dirpath)
             else:
                 aname = rls.artist.name if rls.artist != None else 'Unknown Artist'
                 print_(aname + u' - ' + rls.name)
     else:
-        for track in lib.tracks(query):
+        for track in lib.tracks(fields):
             if path and track.file != None:
                 print_(track.file.path)
             else:
@@ -54,7 +59,7 @@ list_cmd.parser.add_option('-r', '--release', action='store_true',
 list_cmd.parser.add_option('-p', '--path', action='store_true',
     help='print paths for matched items or albums')
 def list_func(lib, config, opts, args):
-    list_items(lib, ui.make_query(args), opts.release, opts.path)
+    list_items(lib, args, opts.release, opts.path)
 list_cmd.func = list_func
 default_commands.append(list_cmd)
 # }}} end list: Query and show library contents
