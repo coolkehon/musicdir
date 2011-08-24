@@ -73,6 +73,8 @@ import_cmd.parser.add_option('-l', '--log', dest='logpath',
     help='file to log untaggable albums for later review')
 import_cmd.parser.add_option('-a', '--attachments', action='store_true',
     help='attach files in same directory as audio files')
+import_cmd.parser.add_option('-c', '--checksum', action='store_true',
+    help='add checksum to new files. NOTE: this will take awhile')
 #import_cmd.parser.add_option('', '', action='store_false',
 #    help='')
 
@@ -134,15 +136,24 @@ def import_func(lib, config, opts, args):
                     try:
                         track = Track()
                         track.read(file)
+
                         if opts.attachments == True:
                             track.attachments = attachments
                             if track.release != None:
                                 track.release.cover = cover
+
+                        if opts.checksum == True:
+                            if track.file is not None:
+                                track.file.checksum()
+                            for atch in track.attachments:
+                                atch.file.checksum()
+
                         lib.session.add(track)
                     except UnreadableFileError:
                         logger.error(u'FAILED: ' + file.decode('utf8', 'replace'))
                         if logfile != None:
                             logfile.write(file.decode('utf8', 'replace') + u'\n')
+            
     if logfile != None:
         logfile.close()
     lib.session.commit()

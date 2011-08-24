@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time, datetime
+import hashlib
 from string import Template
 
 from sqlalchemy import *
@@ -40,16 +41,22 @@ class File(Base):
     path = Column(BLOB)
     size = Column(Integer)
     dateadded = Column(DateTime)
-    presum = Column(UnicodeText)
+    sha1_checksum = Column(Text)
+    sha1_presum = Column(Text) # first 2048 bytes of file
 
-    def __init__(self, path=None, size=None, dateadded=None, presum=None):
+    def __init__(self, path=None, size=None, dateadded=None):
         self.path = path
         self.size = size
         self.dateadded = dateadded
-        self.presum = presum
 
-    def exists():
+    def exists(self):
         return self.path != None and os.path.exists(self.path)
+
+    def checksum(self):
+        if self.exists():
+            self.sha1_checksum = hashlib.sha1(file(self.path, 'r').read()).hexdigest()
+            self.sha1_presum = hashlib.sha1(file(self.path, 'r').read(2048)).hexdigest()
+        return self.sha1_checksum if self.sha1_checksum is not None else None
 # }}} end File(Base)
 
 # {{{ Attachment(Base)
@@ -430,7 +437,7 @@ class Library(BaseLibrary):
                     filters['artists'].append( Artist.name == m.group(2) )
                     continue
                 elif re.match(r'^(title|track)$', m.group(1), re.I):
-                    filters['tracks'].append( Track.name == m.group(2) )
+                    filters['tracks'].append( Track.title == m.group(2) )
                     continue
                 elif re.match(r'^path$', m.group(1), re.I):
                     filters['paths'].append( Release.dirpath == m.group(2) )
