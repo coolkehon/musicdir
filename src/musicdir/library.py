@@ -287,6 +287,7 @@ class Track(Base):
             self.length = f.length
             self.bitrate = f.bitrate
             self.format = f.format
+            self.date = f.date
     # }}} end read(self, filepath)
 
     # {{{ write(self)
@@ -407,7 +408,7 @@ class Library(BaseLibrary):
             return None
         
         # for or'ing and and'ing together later
-        filters = { 'releases' : [ ], 'artists' : [ ], 'tracks' : [ ], 'paths' : [ ],  'tags' : [ ], 'other' : [ ] }
+        filters = { 'releases' : [ ], 'artists' : [ ], 'tracks' : [ ], 'paths' : [ ],  'tags' : [ ], 'other' : [ ], 'year' : [ ], 'day' : [ ], 'month' : [ ] }
 
         for field in fields:
             # like matches
@@ -422,10 +423,21 @@ class Library(BaseLibrary):
                 elif re.match(r'^(title|track)$', m.group(1), re.I):
                     filters['tracks'].append( Track.title.like('%' + m.group(2) + '%') )
                     continue
-                elif re.match(r'^path$', m.group(1), re.I):
+                elif m.group(1).lower() == 'path':
                     filters['paths'].append( Release.dirpath.like('%' + m.group(2) + '%') )
                     filters['paths'].append( File.path.like('%' + m.group(2) + '%') )
                     continue
+                elif m.group(1).lower() == 'year':
+                    filters['year'].append(func.year(Track.date).like('%' + m.group(2) + '%'))
+                    continue
+                elif m.group(1).lower() == 'day':
+                    filters['day'].append(func.day(Track.date).like('%' + m.group(2) + '%'))
+                    continue
+                elif m.group(1).lower() == 'month':
+                    filters['month'].append(func.month(Track.date).like('%' + m.group(2) + '%'))
+                    continue
+
+
 
             # exact matches
             m = re.match(r'^(.*?)=(.*?)$', field)
@@ -443,6 +455,16 @@ class Library(BaseLibrary):
                     filters['paths'].append( Release.dirpath == m.group(2) )
                     filters['paths'].append( File.path == m.group(2) )
                     continue
+                elif m.group(1).lower() == 'year':
+                    filters['year'].append(func.year(Track.date) == m.group(2))
+                    continue
+                elif m.group(1).lower() == 'day':
+                    filters['day'].append(func.day(Track.date) == m.group(2))
+                    continue
+                elif m.group(1).lower() == 'month':
+                    filters['month'].append(func.month(Track.date) == m.group(2))
+                    continue
+
 
             # tag matches
             m = re.match(r'^\+(.*?)$', field)
@@ -484,6 +506,22 @@ class Library(BaseLibrary):
             final.append(filters['tags'][0] )
         elif len(filters['tags']) > 1:
             final.append(or_(*filters['tags']) )
+
+        if len(filters['day']) == 1:
+            final.append(filters['day'][0] )
+        elif len(filters['day']) > 1:
+            final.append(or_(*filters['day']) )
+
+        if len(filters['month']) == 1:
+            final.append(filters['month'][0] )
+        elif len(filters['month']) > 1:
+            final.append(or_(*filters['month']) )
+
+        if len(filters['year']) == 1:
+            final.append(filters['year'][0] )
+        elif len(filters['year']) > 1:
+            final.append(or_(*filters['year']) )
+
 
         if len(filters['other']) == 1:
             final.append(filters['other'][0] )
