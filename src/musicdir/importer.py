@@ -9,7 +9,7 @@ from musicdir.mediafile import UnreadableFileError
 def import_tracks(lib=None, files=[ ], attachments=[ ], cover=None):
     return [ import_track(lib=lib, file=file, attachments=attachments, cover=cover) for file in files ]
     
-def import_track(lib=None, file=None, attachments=[ ], cover=[ ]):
+def import_track(lib=None, file=None, attachments=[ ], cover=None):
     if os.path.exists(file.path):
         session = lib.session
 
