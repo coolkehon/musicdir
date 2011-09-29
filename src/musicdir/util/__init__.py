@@ -53,6 +53,11 @@ def sorted_walk(path):
     # Make sure the path isn't a Unicode string.
     path = bytestring_path(path)
 
+    # return file if path is a file
+    if os.path.isfile(path):
+        yield (os.path.dirname(path), [ ], [ os.path.basename(path) ] )
+        return
+
     # Get all the directories and files at this level.
     dirs = []
     files = []

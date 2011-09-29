@@ -9,6 +9,12 @@ beets:: http://code.google.com/p/beets/wi
     * project which heavily influences MusicDir
 python-musicbrainz2:: http://musicbrainz.org/doc/python-musicbrainz2
     * python interface to musicbrainz
+yaml:: http://pyyaml.org/wiki/PyYAMLDocumentation
+    * python interface to yaml (will be used to change track data)
+pyplugin:: https://code.google.com/p/pyplugin/
+    * python plugin framework
+schema notes:: http://www.pui.ch/phred/archives/2005/04/tags-database-schemas.html
+    * database schema query notes
 
 = ToDo =
 Basically:
@@ -25,12 +31,124 @@ Basically:
 6) add file + info to database
 7)  
 
-= Command Line Interface =
-see musicdir --help
+= Data Stored =
+* each object has its own unique id within the database
+Artist
+    id
+    name
+    # atrribute[description]
+    # can have attribute[art] for art, can be comma seperated list of file ids
+    
+Similar Artist
+    * association table
+    id
+    artist_id
+    similar_artist_id
+    match_percent
+    source
+    
+Release
+    id
+    name
+    disc count
+    type # release type
+    artist_id
+    date
+    track_total
+    disc_total
+    bool compilation # true if compilation / various artists
+    # attribute[description]
+    # attribute[cover]
+    backref( tracks )
+
+ 
+Track
+    id
+    artist_id
+    release_id
+    title
+    track
+    disc
+    genre
+    date
+    composer
+    length
+    bpm
+
+Tag
+    * has association tables for Artist, Release, Track
+    id
+    name
+    description
+
+File 
+    id
+    path
+    size
+    dateadded
+    sha1_checksum
+    sha1_presum
+    
+Attachments
+    * has association table for ...
+    id
+    description
+    file id
+
+Attributes
+    * has association table for ...
+    id
+    name
+
+Associated lastfm, musicbrainz id
+
+Track Files
+    * represents files which are tracks in the database
+    id
+    track_id
+    file_id
+    bitrate
+    format
+    comments
+
+Track File Attachments
+    * example table for track files
+    id
+    track_file_id
+    attachment_id
+
+= Notes =
+* dont reinvent wheel, use pyplugin on google code
+
+* different plugins for most things
+    * plugins for different import methods
+        * basic (read from file metadata)
+        * last.fm
+        * discogs
+        * musicbrainz
+        * combination
+
+* use plugin framework so that everything is in a module
+    *  most things should not be in core
+
+* use pyYAML for YAML user editing of data 
+    * send data to file and call editor to edit file (editor can be specified 
+      on command line)
+    * use pyyaml to read data
+
+* attributes should be accessed through python's __getattr__ and __setattr__ in a
+  attributes[] dictionary for the object
+
+* release should have disc[] list for each disc, if disc count is 1 (single cd
+  release) then either have an array size of 1 or have a single element, which
+  ever is easier in python
 
 = Database Scheme =
 
 = Database Addition Steps =
+
+= Command Line Interface =
+see musicdir --help
 
 = Import Steps =
 

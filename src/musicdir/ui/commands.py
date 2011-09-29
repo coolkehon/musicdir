@@ -17,6 +17,7 @@ from musicdir.ui import print_
 from musicdir.util import *
 from musicdir.library import *
 from musicdir.mediafile import UnreadableFileError
+from musicdir import importer
 
 import logging
 import codecs
@@ -39,15 +40,14 @@ def list_items(lib, query, release, path):
     
     if release:
         for rls in lib.releases(fields):
-            if path:
-                print_(rls.dirpath)
-            else:
-                aname = rls.artist.name if rls.artist != None else 'Unknown Artist'
-                print_(aname + u' - ' + rls.name)
+            aname = rls.artist.name if rls.artist != None else 'Unknown Artist'
+            print_(aname + u' - ' + rls.name)
     else:
         for track in lib.tracks(fields):
-            if path and track.file != None:
-                print_(track.file.path)
+            if path:
+                if track.files is not None:
+                    for trackfile in track.files:
+                        print_(trackfile.file.path)
             else:
                 aname = track.artist.name if track.artist != None else 'Unknown Artist'
                 rname = track.release.name if track.release != None else 'Unknown Release'
@@ -97,8 +97,8 @@ def import_func(lib, config, opts, args):
             print_(root)
 
             mre = re.compile(r'\.(m4a|mp4|mp3|flac|ogg|ape|wv|mpc)$', re.I)
-            are = re.compile(r'\.(nfo|cue|log)$', re.I)
-            cover_re = re.compile(r'(folder|cover|cd|front)\.(jpg|jpeg|png|bmp)$', re.I)
+            are = re.compile(r'\.(nfo|cue|log|xml)$', re.I)
+            cover_re = re.compile(r'(folder|cover|cd|front)\.(jpg|jpeg|png|bmp|tiff|svg)$', re.I)
 
             mfiles = [ ] # audio files
             afiles = [ ] # attachments
@@ -114,46 +114,44 @@ def import_func(lib, config, opts, args):
                 if mre.search(file):
                     if opts.verbose:
                         print_(file)
-                    mfiles.append(file)
+                    mfiles.append(File(path=syspath(file)) )
+
                 elif opts.attachments == True and cover == None and cover_re.search(file):
                     if opts.verbose:
                         print_(file)
-                    cover = File(path=file)
+                    cover = Attachment(file=File(path=file), name=u'cover')
+                    afiles.append(cover)
+
                 elif opts.attachments == True and are.search(file):
                     if opts.verbose:
                         print_(file)
-                    afiles.append(file)
+                    afiles.append(Attachment(file=File(path=file), name=file.decode('utf8','replace')) )
 
             if len(mfiles) > 0:
-                attachments = [ ]
-                for file in afiles:
-                    attachments.append(Attachment(file=File(path=file), name=file.decode('utf8','replace')) )
+                tracks = importer.import_tracks( \
+                        lib=lib, \
+                        files=mfiles, \
+                        attachments=afiles, \
+                        cover=cover )
 
-                if cover != None:
-                    attachments.append(Attachment(file=cover, name='cover'))
+                # do checksum
+                if opts.checksum == True:
+                    for file in  mfiles:
+                        try:
+                            if opts.checksum == True:
+                                if file is not None:
+                                    file.checksum()
 
-                for file in  mfiles:
-                    try:
-                        track = Track()
-                        track.read(file)
+                                for atch in afiles:
+                                    atch.file.checksum()
 
-                        if opts.attachments == True:
-                            track.attachments = attachments
-                            if track.release != None:
-                                track.release.cover = cover
+                        except UnreadableFileError:
+                            if logfile != None:
+                                logfile.write(u'FAILED: ' + file.path.decode('utf8', 'replace') + u'\n')
 
-                        if opts.checksum == True:
-                            if track.file is not None:
-                                track.file.checksum()
-                            for atch in track.attachments:
-                                atch.file.checksum()
-
-                        lib.session.add(track)
-                    except UnreadableFileError:
-                        logger.error(u'FAILED: ' + file.decode('utf8', 'replace'))
-                        if logfile != None:
-                            logfile.write(file.decode('utf8', 'replace') + u'\n')
-            
+                for track in tracks:
+                    lib.session.add(track)
+                
     if logfile != None:
         logfile.close()
     lib.session.commit()

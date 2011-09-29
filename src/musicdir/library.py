@@ -95,6 +95,11 @@ track_attachments = Table('track_attachments', Base.metadata,
         Column('track_id', Integer, ForeignKey('tracks.id')),
         Column('attachment_id', Integer, ForeignKey(Attachment.id)) )
 
+track_file_attachments = Table('track_file_attachments', Base.metadata,
+        Column('id', Integer, primary_key=True),
+        Column('track_file_id', Integer, ForeignKey('track_files.id')),
+        Column('attachment_id', Integer, ForeignKey(Attachment.id)) )
+
 release_attachments = Table('release_attachments', Base.metadata,
         Column('id', Integer, primary_key=True),
         Column('release_id', Integer, ForeignKey('releases.id')),
@@ -137,6 +142,7 @@ class ArtistTag(Base):
     origin = Column(UnicodeText)
 
     tag = relationship(Tag)
+
 # }}} end Associative Tables
 
 # {{{ Artist(Base)
@@ -145,18 +151,28 @@ class Artist(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(UnicodeText)
-    description = Column(UnicodeText)
-    artfile_id = Column(Integer, ForeignKey(File.id))
 
-    art = relationship(File, primaryjoin=artfile_id == File.id, uselist=False)
     attachments = relationship(Attachment, secondary=artist_attachments)
     tags = relationship(ArtistTag)
 
-    def __init__(self, name=None, description=None, artpath=None):
+    def __init__(self, name=None):
         self.name = name
-        self.description = description
-        self.artpath = artpath
 # }}} end Artist(Base)
+
+# {{{ SimilarArtist(Base)
+class SimilarArtist(Base):
+    __tablename__ = 'similar_artists'
+
+    id = Column(Integer, primary_key=True)
+    artist_id = Column(Integer, ForeignKey('artists.id'))
+    similar_artist_id = Column(Integer, ForeignKey('artists.id'))
+    match_percent = Column(Integer)
+    match_source = Column(UnicodeText)
+
+    similar_artist = relationship(Artist, primaryjoin=similar_artist_id == Artist.id)
+    artist = relationship(Artist, primaryjoin=artist_id == Artist.id, backref="similar_artists")
+
+# }}} end SimilarArtist(Base)
 
 # {{{ Release(Base)
 class Release(Base):
@@ -165,29 +181,24 @@ class Release(Base):
     id = Column(Integer, primary_key=True)
     name = Column(UnicodeText)
     type = Column(UnicodeText)
-    coverfile_id = Column(Integer, ForeignKey(File.id))
     artist_id = Column(Integer, ForeignKey(Artist.id))
     date = Column(Date)
     tracktotal = Column(Integer)
     disctotal = Column(Integer)
     compilation = Column(Boolean)
-    dirpath = Column(UnicodeText)
 
-    cover = relationship(File, primaryjoin=coverfile_id == File.id, uselist=False)
     artist = relationship(Artist, primaryjoin=artist_id == Artist.id, backref='releases')
     attachments = relationship(Attachment, secondary=release_attachments)
     tags = relationship(ReleaseTag)
 
-    def __init__(self, name=None, type=None, artpath=None, artist=None, date=None, tracktotal=None, disctotal=None, compilation=None, dirpath=None):
+    def __init__(self, name=None, type=None, artist=None, date=None, tracktotal=None, disctotal=None, compilation=None):
         self.name = name
         self.type = type
-        self.artpath = artpath
         self.artist = artist
         self.date = date
         self.tracktotal = tracktotal
         self.disctotal = disctotal
         self.compilation = compilation
-        self.dirpath = dirpath
 # }}} end Release(Base)
 
 # {{{ Track(Base)
@@ -197,138 +208,91 @@ class Track(Base):
     id = Column(Integer, primary_key=True)
     artist_id = Column(Integer, ForeignKey(Artist.id))
     release_id = Column(Integer, ForeignKey(Release.id))
-    file_id = Column(Integer, ForeignKey(File.id))
     title = Column(UnicodeText)
     track = Column(Integer)
-    discnum = Column(Integer)
+    disc = Column(Integer)
     genre = Column(UnicodeText)
     date = Column(Date)
     composer = Column(UnicodeText)
-    lyrics = Column(UnicodeText)
-    comments = Column(UnicodeText)
-    bitrate = Column(Integer)
-    format = Column(UnicodeText)
     length = Column(Integer)
     bpm = Column(Integer)
 
     artist = relationship(Artist, primaryjoin=artist_id == Artist.id, backref='tracks')
     release = relationship(Release, primaryjoin=release_id == Release.id, backref='tracks')
-    file = relationship(File, primaryjoin=file_id == File.id)
     attachments = relationship(Attachment, secondary=track_attachments)
     tags = relationship(TrackTag)
 
-    def __init__(self, artist=None, release=None, file=None, title=None, track=None, discnum=None, genre=None, date=None, composer=None, lyrics=None, comments=None, bitrate=None, format=None, length=None, bpm=None):
+    # {{{ __init__(self, ...)
+    def __init__(self, artist=None, release=None, title=None, track=None, disc=None, genre=None, date=None, composer=None, length=None, bpm=None):
         self.artist = artist
         self.release = release
-        self.file = file
         self.title = title
         self.track = track
-        self.discnum = discnum
+        self.disc = disc
         self.genre = genre
         self.date = date
         self.composer = composer
-        self.lyrics = lyrics
-        self.comments = comments
-        self.bitrate = bitrate
-        self.format = format
         self.length = length
-
-    # {{{ read(self, filepath)
-    def read(self, filepath):
-        """Read the track's metdata from filepath
-        """
-        session = Session()
-        if os.path.exists(filepath):
-            self.file = File(path=syspath(filepath))
-            
-            f = MediaFile(self.file.path)
-            self.title = f.title
-
-            if f.artist != None and len(f.artist) > 0:
-                self.artist = session.query(Artist).filter(Artist.name == f.artist).first()
-                if self.artist == None:
-                    self.artist = Artist(name=f.artist)
-
-            elif f.albumartist != None and len(f.albumartist) > 0:
-                self.artist = session.query(Artist).filter(Artist.name == f.albumartist).first()
-                if self.artist == None:
-                    self.artist = Artist(name=f.albumartist)
-            
-            if f.album != None and len(f.album) > 0:
-                query = session.query(Release).filter(Release.name == f.album)
-                if f.albumartist != None and len(f.albumartist) > 0:
-                    query = query.filter(Artist.name == f.albumartist)
-
-                elif self.artist != None:
-                    query = query.filter(Artist.name == self.artist.name)
-                
-                self.release = query.first()
-                if self.release == None:
-                    self.release = Release(name=f.album, tracktotal=f.tracktotal, disctotal=f.disctotal, compilation=f.comp)
-                    
-                    if self.artist != None and f.albumartist != None and self.artist.name == f.albumartist:
-                        self.release.artist = self.artist
-
-                    elif f.albumartist != None and len(f.albumartist) > 0:
-                        self.release.artist = session.query(Artist).filter(Artist.name == f.albumartist).first()
-                        if self.release.artist == None:
-                            self.release.artist = Artist(name=f.albumartist)
-
-                    elif self.artist != None:
-                        self.release.artist = self.artist
-             
-            self.genre = f.genre
-            self.composer = f.composer
-            self.track = f.track
-            self.discnum = f.disc
-            self.lyrics = f.lyrics
-            self.comments = f.comments
-            self.bpm = f.bpm
-            self.length = f.length
-            self.bitrate = f.bitrate
-            self.format = f.format
-            self.date = f.date
-    # }}} end read(self, filepath)
+    # }}} end __init__(self, ...)
 
     # {{{ write(self)
     def write(self):
         """Write the track's metadata to the associated file.
         """
-        #f = MediaFile(syspath(self.filepath))
-        # TODO save values to mediafile
-        #f.title = self.title
-        #f.artist = self.lib.artist(self.artist).name
-        #f.album = self.lib.release(self.release).name
-        #f.genre = self.genre
-        #f.composer = self.composer
-        # f.grouping = 
+        for file in self.files:
+            f = MediaFile(syspath(file.path))
+            # TODO save values to mediafile
+            f.title = self.title
+            f.artist = self.artist.name
+            f.album = self.release.name
+            f.genre = self.genre
+            f.composer = self.composer
+            # f.grouping = 
 
-        # parse time format
-        # TODO add these to beets.util
-        #time_format = "%Y-%m-%d %H:%M:%S"
-        #date = datetime.datetime.fromtimestamp(time.mktime(time.strptime(self.date, time_format)))
-        #f.year = date.year
-        #f.month = date.month
-        #f.day = date.day
-        #f.date = self.date
-        #f.track = self.track
-        #f.tracktotal = self.lib.release(self.release).tracktotal
-        #f.disc = self.disc
-        #f.disctotal = self.lib.release(self.release).disctotal
-        # f.lyrics = 
-        #f.comments = 
-        #f.bpm = 
-        #f.comp = 
-        #f.albumartist = 
-        #f.albumtype =
-        # f.art = 
-        #f.mb_trackid = 
-        #f.mb_albumid = 
-        #f.mb_artistid = 
-        #f.mb_albumartistid = 
-        #f.save()
+            # parse time format
+            # TODO: add these to beets.util
+            #time_format = "%Y-%m-%d %H:%M:%S"
+            #date = datetime.datetime.fromtimestamp(time.mktime(time.strptime(self.date, time_format)))
+            #f.year = date.year
+            #f.month = date.month
+            #f.day = date.day
+            #f.date = self.date
+            f.track = self.track
+            f.tracktotal = self.release.tracktotal
+            f.disc = self.disc
+            f.disctotal = self.release.disctotal
+            # f.lyrics = 
+            #f.comments = 
+            #f.bpm = 
+            #f.comp = 
+            #f.albumartist = 
+            #f.albumtype =
+            # f.art = 
+            #f.mb_trackid = 
+            #f.mb_albumid = 
+            #f.mb_artistid = 
+            #f.mb_albumartistid = 
+            f.save()
     # }}} end write(self)
 # }}} end Track(Item)
+
+# {{{ TrackFile(Base)
+class TrackFile(Base):
+    __tablename__ = 'track_files'
+
+    id = Column(Integer, primary_key=True)
+    track_id = Column(Integer, ForeignKey(Track.id))
+    file_id = Column(Integer, ForeignKey(File.id))
+    cover_id = Column(Integer, ForeignKey(Attachment.id))
+    bitrate = Column(Integer)
+    format = Column(UnicodeText)
+
+    track = relationship(Track, primaryjoin=track_id == Track.id, backref='files')
+    attachments = relationship(Attachment, secondary=track_file_attachments)
+    file = relationship(File, primaryjoin=file_id == File.id)
+    cover = relationship(Attachment, primaryjoin=cover_id == Attachment.id)
+
+# }}} end TrackFile(Base)
 
 # {{{ BaseLibrary
 class BaseLibrary(object):
@@ -424,7 +388,6 @@ class Library(BaseLibrary):
                     filters['tracks'].append( Track.title.like('%' + m.group(2) + '%') )
                     continue
                 elif m.group(1).lower() == 'path':
-                    filters['paths'].append( Release.dirpath.like('%' + m.group(2) + '%') )
                     filters['paths'].append( File.path.like('%' + m.group(2) + '%') )
                     continue
                 elif m.group(1).lower() == 'year':
@@ -436,8 +399,6 @@ class Library(BaseLibrary):
                 elif m.group(1).lower() == 'month':
                     filters['month'].append(func.month(Track.date).like('%' + m.group(2) + '%'))
                     continue
-
-
 
             # exact matches
             m = re.match(r'^(.*?)=(.*?)$', field)
@@ -452,7 +413,6 @@ class Library(BaseLibrary):
                     filters['tracks'].append( Track.title == m.group(2) )
                     continue
                 elif re.match(r'^path$', m.group(1), re.I):
-                    filters['paths'].append( Release.dirpath == m.group(2) )
                     filters['paths'].append( File.path == m.group(2) )
                     continue
                 elif m.group(1).lower() == 'year':
@@ -556,7 +516,8 @@ class Library(BaseLibrary):
             return self.session.query(Artist).\
                     outerjoin(Track, Track.artist_id == Artist.id).\
                     outerjoin(Release, Release.id == Track.release_id).\
-                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(TrackFile, TrackFile.track_id == Track.id).\
+                    outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
                     outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
                     filter(filter).group_by(Artist.id).all()
@@ -576,7 +537,8 @@ class Library(BaseLibrary):
             return self.session.query(Release).\
                     outerjoin(Artist, Artist.id == Release.artist_id).\
                     outerjoin(Track, Track.release_id == Release.id).\
-                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(TrackFile, TrackFile.track_id == Track.id).\
+                    outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
                     outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
                     filter(filter).group_by(Release.id).all()
@@ -596,7 +558,8 @@ class Library(BaseLibrary):
             return self.session.query(Track).\
                     outerjoin(Artist, Artist.id == Track.artist_id).\
                     outerjoin(Release, Release.id == Track.release_id).\
-                    outerjoin(File, File.id == Track.file_id).\
+                    outerjoin(TrackFile, TrackFile.track_id == Track.id).\
+                    outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(TrackTag, TrackTag.track_id == Track.id).\
                     outerjoin(Tag, TrackTag.tag_id == Tag.id).\
                     filter(filter).group_by(Track.id).all()
