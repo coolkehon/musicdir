@@ -6,10 +6,10 @@ from musicdir.util import *
 from musicdir.library import *
 from musicdir.mediafile import UnreadableFileError
 
-def import_tracks(lib=None, files=None, attachments=None, cover=None):
+def import_tracks(lib=None, files=[ ], attachments=[ ], cover=None):
     return [ import_track(lib=lib, file=file, attachments=attachments, cover=cover) for file in files ]
     
-def import_track(lib=None, file=None, attachments=None, cover=None):
+def import_track(lib=None, file=None, attachments=[ ], cover=[ ]):
     if os.path.exists(file.path):
         session = lib.session
 
