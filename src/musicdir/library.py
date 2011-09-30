@@ -358,18 +358,18 @@ class Library(BaseLibrary):
 
     # }}} end __init__(self, path, directory, path_format, art_filename)
 
-    # {{{ get_filter(self, fields)
-    def get_filter(self, fields):
+    # {{{ get_filter(self, obj=None, query=None, fields=None)
+    def get_filter(self, obj=None, query=None, fields=None):
         """Transform a field into a filter using python regex
         """
-        if fields is None:
-            return None
+        if fields is None or query is None or obj is None:
+            return query
 
         if not isinstance(fields, list):
             fields = [ fields ]
 
         if len(fields) < 1:
-            return None
+            return query
         
         # for or'ing and and'ing together later
         filters = { 'releases' : [ ], 'artists' : [ ], 'tracks' : [ ], 'paths' : [ ],  'tags' : [ ], 'other' : [ ], 'year' : [ ], 'day' : [ ], 'month' : [ ] }
@@ -425,7 +425,6 @@ class Library(BaseLibrary):
                     filters['month'].append(func.month(Track.date) == m.group(2))
                     continue
 
-
             # tag matches
             m = re.match(r'^\+(.*?)$', field)
             if m != None:
@@ -443,58 +442,57 @@ class Library(BaseLibrary):
         # finalize filters
         final = [ ]
         if len(filters['releases']) == 1:
-            final.append(filters['releases'][0] )
+            query = query.filter(filters['releases'][0] )
         elif len(filters['releases']) > 1:
-            final.append(or_(*filters['releases']) )
+            query = query.filter(or_(*filters['releases']) )
 
         if len(filters['artists']) == 1:
-            final.append(filters['artists'][0] )
+            query = query.filter(filters['artists'][0] )
         elif len(filters['artists']) > 1:
-            final.append(or_(*filters['artists']) )
+            query = query.filter(or_(*filters['artists']) )
 
         if len(filters['tracks']) == 1:
-            final.append(filters['tracks'][0] )
+            query = query.filter(filters['tracks'][0] )
         elif len(filters['tracks']) > 1:
-            final.append(or_(*filters['tracks']) )
+            query = query.filter(or_(*filters['tracks']) )
 
         if len(filters['paths']) == 1:
-            final.append(filters['paths'][0] )
+            query = query.filter(filters['paths'][0] )
         elif len(filters['paths']) > 1:
-            final.append(or_(*filters['paths']) )
+            query = query.filter(or_(*filters['paths']) )
 
         if len(filters['tags']) == 1:
-            final.append(filters['tags'][0] )
+            query = query.filter(filters['tags'][0] )
         elif len(filters['tags']) > 1:
-            final.append(or_(*filters['tags']) )
+            query = query.filter(or_(*filters['tags']) )
 
         if len(filters['day']) == 1:
-            final.append(filters['day'][0] )
+            query = query.filter(filters['day'][0] )
         elif len(filters['day']) > 1:
-            final.append(or_(*filters['day']) )
+            query = query.filter(or_(*filters['day']) )
 
         if len(filters['month']) == 1:
-            final.append(filters['month'][0] )
+            query = query.filter(filters['month'][0] )
         elif len(filters['month']) > 1:
-            final.append(or_(*filters['month']) )
+            query = query.filter(or_(*filters['month']) )
 
         if len(filters['year']) == 1:
-            final.append(filters['year'][0] )
+            query = query.filter(filters['year'][0] )
         elif len(filters['year']) > 1:
-            final.append(or_(*filters['year']) )
+            query = query.filter(or_(*filters['year']) )
 
 
         if len(filters['other']) == 1:
-            final.append(filters['other'][0] )
+            query = query.filter(filters['other'][0] )
         elif len(filters['other']) > 1:
-            final.append(and_(*filters['other']) )
+            query = query.filter(and_(*filters['other']) )
         
-        if len(final) == 1:
-            return final[0]
-        elif len(final) > 1:
-            return and_(*final)
-        else:
-            return None
-    # }}} end get_filter(self, fields)
+        # add having clause if needed
+        if len(filters['tags']) > 1:
+            query = query.having(func.count(obj.id) >= len(filters['tags']) )
+
+        return query
+    # }}} end get_filter(self, obj=None, query=None, fields=None)
 
     def add(self, item):
         """Add a Item (track, release, artist, etc) to the database"""
@@ -511,16 +509,17 @@ class Library(BaseLibrary):
         """Return a list of Artist objects from the database base on fields
         If no fields then return all artist in database
         """
-        filter = self.get_filter(fields)
         if filter is not None:
-            return self.session.query(Artist).\
+            query = self.session.query(Artist).\
                     outerjoin(Track, Track.artist_id == Artist.id).\
                     outerjoin(Release, Release.id == Track.release_id).\
                     outerjoin(TrackFile, TrackFile.track_id == Track.id).\
                     outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(ArtistTag, ArtistTag.artist_id == Artist.id).\
-                    outerjoin(Tag, ArtistTag.tag_id == Tag.id).\
-                    filter(filter).group_by(Artist.id).all()
+                    outerjoin(Tag, ArtistTag.tag_id == Tag.id)
+
+            query = self.get_filter(obj=Artist, query=query, fields=fields)
+            return query.group_by(Artist.id).all()
         else:
             return self.session.query(Artist).group_by(Artist.id).all()
 
@@ -532,16 +531,16 @@ class Library(BaseLibrary):
         If no fields then return all releases in database
         """
         # TODO: add support for various artist release search
-        filter = self.get_filter(fields)
         if filter is not None:
-            return self.session.query(Release).\
+            query = self.session.query(Release).\
                     outerjoin(Artist, Artist.id == Release.artist_id).\
                     outerjoin(Track, Track.release_id == Release.id).\
                     outerjoin(TrackFile, TrackFile.track_id == Track.id).\
                     outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
-                    outerjoin(Tag, ReleaseTag.tag_id == Tag.id).\
-                    filter(filter).group_by(Release.id).all()
+                    outerjoin(Tag, ReleaseTag.tag_id == Tag.id)
+            query = self.get_filter(obj=Release, query=query, fields=fields)
+            return group_by(Release.id).all()
         else:
             return self.session.query(Release).group_by(Release.id).all()
 
@@ -553,16 +552,17 @@ class Library(BaseLibrary):
         If no fields then return all tracks in database
         """
         # TODO: add support for featured artist track search
-        filter = self.get_filter(fields)
         if filter is not None:
-            return self.session.query(Track).\
+            query = self.session.query(Track).\
                     outerjoin(Artist, Artist.id == Track.artist_id).\
                     outerjoin(Release, Release.id == Track.release_id).\
                     outerjoin(TrackFile, TrackFile.track_id == Track.id).\
                     outerjoin(File, File.id == TrackFile.file_id).\
                     outerjoin(TrackTag, TrackTag.track_id == Track.id).\
-                    outerjoin(Tag, TrackTag.tag_id == Tag.id).\
-                    filter(filter).group_by(Track.id).all()
+                    outerjoin(Tag, TrackTag.tag_id == Tag.id)
+
+            query = self.get_filter(obj=Track, query=query, fields=fields)
+            return query.group_by(Track.id).all()
         else:
             return self.session.query(Track).group_by(Track.id).all()
 

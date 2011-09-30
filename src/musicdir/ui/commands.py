@@ -128,26 +128,28 @@ def import_func(lib, config, opts, args):
                     afiles.append(Attachment(file=File(path=file), name=file.decode('utf8','replace')) )
 
             if len(mfiles) > 0:
-                tracks = importer.import_tracks( \
-                        lib=lib, \
-                        files=mfiles, \
-                        attachments=afiles, \
-                        cover=cover )
+                tracks = [ ]
+                for mfile in mfiles:
+                    try:
+                        track = importer.import_track( \
+                                lib=lib, \
+                                file=mfile, \
+                                attachments=afiles, \
+                                cover=cover )
+                        tracks.append(track)
+                    except UnreadableFileError:
+                        if logfile != None:
+                            logfile.write(u'FAILED: ' + mfile.path.decode('utf8', 'replace') + u'\n')
 
                 # do checksum
                 if opts.checksum == True:
                     for file in  mfiles:
-                        try:
-                            if opts.checksum == True:
-                                if file is not None:
-                                    file.checksum()
+                        if opts.checksum == True:
+                            if file is not None:
+                                file.checksum()
 
-                                for atch in afiles:
-                                    atch.file.checksum()
-
-                        except UnreadableFileError:
-                            if logfile != None:
-                                logfile.write(u'FAILED: ' + file.path.decode('utf8', 'replace') + u'\n')
+                            for atch in afiles:
+                                atch.file.checksum()
 
                 for track in tracks:
                     lib.session.add(track)

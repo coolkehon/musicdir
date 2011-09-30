@@ -64,7 +64,20 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         # get / create track
         track = None
         if f.title != None:
-            track = session.query(Track).filter(Artist.id == artist.id).filter(Release.id == release.id).filter(Track.title == f.title).first()
+            query = session.query(Track)
+
+            if artist is not None:
+                query = query.filter(Artist.id == artist.id)
+            else:
+                query = query.filter(Artist.id == None)
+
+            if release is not None:
+                query = query.filter(Release.id == release.id)
+            else:
+                query = query.filter(Release.id == None)
+
+            query = query.filter(Track.title == f.title)
+            track = query.first()
 
         if track is None:
             track = Track(
@@ -81,7 +94,15 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         
         # create trackfile 
         if trackfile is None:
-            trackfile = TrackFile(file=file, track=track, bitrate=f.bitrate, format=f.format, attachments=attachments, cover=cover)
+            trackfile = TrackFile(
+                    file=file, 
+                    track=track, 
+                    bitrate=f.bitrate, 
+                    format=f.format, 
+                    attachments=attachments, 
+                    cover=cover )
+            # add to session
+            lib.session.add(trackfile)
 
         return trackfile
 
