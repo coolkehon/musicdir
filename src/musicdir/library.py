@@ -540,7 +540,7 @@ class Library(BaseLibrary):
                     outerjoin(ReleaseTag, ReleaseTag.release_id == Release.id).\
                     outerjoin(Tag, ReleaseTag.tag_id == Tag.id)
             query = self.get_filter(obj=Release, query=query, fields=fields)
-            return group_by(Release.id).all()
+            return query.group_by(Release.id).all()
         else:
             return self.session.query(Release).group_by(Release.id).all()
 
