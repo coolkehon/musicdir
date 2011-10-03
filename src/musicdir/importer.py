@@ -39,13 +39,15 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         # get / create release
         release = None
         if f.album != None and len(f.album) > 0:
-            query = session.query(Release).filter(Release.name == f.album)
+            query = session.query(Release)
+            filter = Release.name == f.album
             if f.albumartist != None and len(f.albumartist) > 0:
-                query = query.filter(Artist.name == f.albumartist)
+                filter = and_(filter, Artist.name == f.albumartist)
 
             elif artist != None:
-                query = query.filter(Artist.name == artist.name)
+                filter = and_(filter, Artist.name == artist.name)
             
+            query = query.filter(filter)
             release = query.first()
             if release == None:
                 release = Release(name=f.album, tracktotal=f.tracktotal, disctotal=f.disctotal, compilation=f.comp)
@@ -66,17 +68,18 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         if f.title != None:
             query = session.query(Track)
 
+            filter = None
             if artist is not None:
-                query = query.filter(Artist.id == artist.id)
+                filter = Artist.id == artist.id
             else:
-                query = query.filter(Artist.id == None)
+                filter = Artist.id == None
 
             if release is not None:
-                query = query.filter(Release.id == release.id)
+                filter = and_(filter, Release.id == release.id)
             else:
-                query = query.filter(Release.id == None)
+                filter = and_(filter, Release.id == None)
 
-            query = query.filter(Track.title == f.title)
+            query = query.filter(and_(filter, Track.title == f.title) )
             track = query.first()
 
         if track is None:
