@@ -16,9 +16,7 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         # get trackfile if it exists
         trackfile = session.query(TrackFile).filter(File.id == file.id).first()
         if trackfile is not None \
-            and trackfile.track is not None \
-            and trackfile.artist is not None \
-            and trackfile.release is not None:
+            and trackfile.track is not None:
             return trackfile
 
         # read metadata in
@@ -28,59 +26,61 @@ def import_track(lib=None, file=None, attachments=[ ], cover=None):
         artist = None
         if f.artist != None and len(f.artist) > 0:
             artist = session.query(Artist).filter(Artist.name == f.artist).first()
-            if artist == None:
+            if artist is None:
                 artist = Artist(name=f.artist)
 
+        # album artist shall suffice if artist is not defined
         elif f.albumartist != None and len(f.albumartist) > 0:
             artist = session.query(Artist).filter(Artist.name == f.albumartist).first()
-            if artist == None:
+            if artist is None:
                 artist = Artist(name=f.albumartist)
         
         # get / create release
         release = None
         if f.album != None and len(f.album) > 0:
-            query = session.query(Release)
+            query = session.query(Release)\
+                    .outerjoin(Artist, Artist.id == Release.artist_id)
+
+            # start filter
             filter = Release.name == f.album
-            if f.albumartist != None and len(f.albumartist) > 0:
+
+            # check if compilation
+            if f.comp is not None:
+                filter = and_(filter, Release.compilation == f.comp)
+
+            # get album artist
+            if not f.comp and f.albumartist != None and len(f.albumartist) > 0:
                 filter = and_(filter, Artist.name == f.albumartist)
 
-            elif artist != None:
-                filter = and_(filter, Artist.name == artist.name)
-            
-            query = query.filter(filter)
-            release = query.first()
+            release = query.filter(filter).first()
             if release == None:
                 release = Release(name=f.album, tracktotal=f.tracktotal, disctotal=f.disctotal, compilation=f.comp)
                 
-                if artist != None and f.albumartist != None and artist.name == f.albumartist:
-                    release.artist = artist
-
-                elif f.albumartist != None and len(f.albumartist) > 0:
+                if f.albumartist != None and len(f.albumartist) > 0:
                     release.artist = session.query(Artist).filter(Artist.name == f.albumartist).first()
                     if release.artist is None:
                         release.artist = Artist(name=f.albumartist)
 
-                elif artist is not None:
-                    release.artist = artist
-         
         # get / create track
         track = None
         if f.title != None:
-            query = session.query(Track)
+            query = session.query(Track)\
+                    .outerjoin(Artist, Artist.id == Track.artist_id)\
+                    .outerjoin(Release, Release.id == Track.release_id)\
 
-            filter = None
+
+            filter = Track.title == f.title
             if artist is not None:
-                filter = Artist.id == artist.id
+                filter = and_(filter, Artist.id == artist.id)
             else:
-                filter = Artist.id == None
+                filter = and_(filter, Artist.id == None)
 
             if release is not None:
                 filter = and_(filter, Release.id == release.id)
             else:
                 filter = and_(filter, Release.id == None)
 
-            query = query.filter(and_(filter, Track.title == f.title) )
-            track = query.first()
+            track = query.filter(filter).first()
 
         if track is None:
             track = Track(

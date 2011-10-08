@@ -359,7 +359,7 @@ class Library(BaseLibrary):
     # }}} end __init__(self, path, directory, path_format, art_filename)
 
     # {{{ get_filter(self, obj=None, query=None, fields=None)
-    def get_filter(self, obj=None, query=None, fields=None):
+    def get_filter(self, obj=None, query=None, fields=None, limit=None):
         """Transform a field into a filter using python regex
         """
         if fields is None or query is None or obj is None:
@@ -434,9 +434,10 @@ class Library(BaseLibrary):
             # TODO add more regex filters
             # TODO OR tags together, this means we need to be passed a list instead
             # TODO add singleton:(1|true) like boolean value filters
-            filters['other'].append( Artist.name.like('%' + field + '%') )
-            filters['other'].append( Release.name.like('%' + field + '%') )
-            filters['other'].append( Track.title.like('%' + field + '%') )
+            filters['other'].append( 
+                    or_(Artist.name.like('%' + field + '%') \
+                            , or_(Release.name.like('%' + field + '%') \
+                            , Track.title.like('%' + field + '%') ) ) )
             continue
         
         # finalize filters
