@@ -48,6 +48,11 @@ class File(Base):
         self.path = path
         self.size = size
         self.dateadded = dateadded
+        if self.size is None and os.path.exists(self.path):
+            self.size = os.path.getsize(self.path)
+
+        if self.dateadded is None:
+            self.dateadded = datetime.datetime.utcnow()
 
     def exists(self):
         return self.path != None and os.path.exists(self.path)

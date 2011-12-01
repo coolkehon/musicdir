@@ -22,6 +22,8 @@ from musicdir import importer
 import logging
 import codecs
 
+from sqlalchemy import func
+
 # The list of default subcommands. This is populated with Subcommand
 # objects that can be fed to a SubcommandsOptionParser.
 default_commands = []
@@ -63,6 +65,40 @@ def list_func(lib, config, opts, args):
 list_cmd.func = list_func
 default_commands.append(list_cmd)
 # }}} end list: Query and show library contents
+
+# {{{ stats: Query and show library stats
+stats_cmd = ui.Subcommand('stats', help='show library stats')
+def stats_func(lib, config, opts, args):
+    total_size = lib.session.query(func.sum(File.size)).scalar()
+    if total_size is None:
+        total_size = 0
+    total_time = lib.session.query(func.sum(Track.length)).scalar()
+    if total_time is None:
+        total_time = 0
+    total_tracks = lib.session.query(func.count(Track.id)).scalar()
+    if total_tracks is None:
+        total_tracks = 0
+    total_artists = lib.session.query(func.count(Artist.id)).scalar()
+    if total_artists is None:
+        total_artists = 0
+    total_releases = lib.session.query(func.count(Release.id)).scalar()
+    if total_releases is None:
+        total_releases = 0
+    total_files = lib.session.query(func.count(File.id)).scalar()
+    if total_files is None:
+        total_files = 0
+
+    print_("Size: %s\nTime: %s\nTracks: %i\nArtists: %i\nReleases: %i\nFiles: %i" %
+            ( ui.human_bytes(float(total_size))
+            , ui.human_seconds(float(total_time))
+            , total_tracks
+            , total_artists
+            , total_releases
+            , total_files) )
+
+stats_cmd.func = stats_func
+default_commands.append(stats_cmd)
+# }}} end stats: Query and show library stats
 
 # {{{ import: simple import into library
 import_cmd = ui.Subcommand('import', help='import new music',
@@ -114,7 +150,7 @@ def import_func(lib, config, opts, args):
                 if mre.search(file):
                     if opts.verbose:
                         print_(file)
-                    mfiles.append(File(path=syspath(file)) )
+                    mfiles.append(File(path=syspath(file), size=os.path.getsize(syspath(file))) )
 
                 elif opts.attachments == True and cover == None and cover_re.search(file):
                     if opts.verbose:
